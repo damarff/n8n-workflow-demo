@@ -1,0 +1,160 @@
+{
+  "name": "Scheduled Scraper → Database",
+  "nodes": [
+    {
+      "id": "1111-2222-3333-4444",
+      "name": "Schedule Trigger (Every Hour)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2222-3333-4444-5555",
+      "name": "Fetch Target URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [550, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SCRAPER_TARGET_URL || 'https://example.com/data' }}",
+        "options": {
+          "timeout": 30000,
+          "followRedirect": true,
+          "ignoreSSLIssues": false
+        },
+        "sendBody": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; n8n-workflow/1.0)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/json,*/*"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3333-4444-5555-6666",
+      "name": "Extract & Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "language": "python",
+        "code": "# Extract relevant fields from the scraped data.\n# Adjust the parsing logic based on the target URL structure.\nimport json\n\n# Available variables:\n#   items: list of input items (each has .json property)\n#   $env: environment variables\n\ndata = items[0].json\nbody = data.get('body', '')\n\n# Example: parse JSON response\nparsed = {}\ntry:\n    parsed = json.loads(body)\nexcept (json.JSONDecodeError, TypeError):\n    # If not JSON, extract fields from HTML using regex or pass raw\n    parsed = {\n        'raw_body': body[:500],\n        'length': len(body),\n        'scraped_at': __import__('datetime').datetime.now().isoformat()\n    }\n\n# Normalize output schema\noutput = {\n    'title': parsed.get('title', parsed.get('name', 'No title')),\n    'description': parsed.get('description', parsed.get('body', ''))[:1000],\n    'url': data.get('url', $env.get('SCRAPER_TARGET_URL', '')),\n    'price': parsed.get('price', parsed.get('amount', None)),\n    'currency': parsed.get('currency', 'USD'),\n    'scraped_at': __import__('datetime').datetime.now().isoformat(),\n    'raw_preview': body[:200]\n}\n\n# Re-wrap as items array\nitems = [{\"json\": output}]"
+      }
+    },
+    {
+      "id": "4444-5555-6666-7777",
+      "name": "Insert into PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1150, 300],
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "scraped_data",
+        "columns": {
+          "columns": {
+            "values": [
+              {
+                "column": "title",
+                "value": "={{ $json.title }}"
+              },
+              {
+                "column": "description",
+                "value": "={{ $json.description }}"
+              },
+              {
+                "column": "url",
+                "value": "={{ $json.url }}"
+              },
+              {
+                "column": "price",
+                "value": "={{ $json.price }}"
+              },
+              {
+                "column": "currency",
+                "value": "={{ $json.currency }}"
+              },
+              {
+                "column": "scraped_at",
+                "value": "={{ $json.scraped_at }}"
+              },
+              {
+                "column": "raw_preview",
+                "value": "={{ $json.raw_preview }}"
+              }
+            ]
+          }
+        },
+        "additionalFields": {
+          "mode": "multi",
+          "ignoreErrors": true
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "postgres-cred",
+          "name": "PostgreSQL DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every Hour)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Target URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Target URL": {
+      "main": [
+        [
+          {
+            "node": "Extract & Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Insert into PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": []
+}

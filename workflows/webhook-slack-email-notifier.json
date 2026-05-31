@@ -1,0 +1,119 @@
+{
+  "name": "Webhook → Slack / Email Notifier",
+  "nodes": [
+    {
+      "id": "aaaa-aaaa-aaaa-aaaa",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "path": "notify",
+        "method": "POST",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "webhook-notify"
+    },
+    {
+      "id": "bbbb-bbbb-bbbb-bbbb",
+      "name": "Filter by Keyword",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [550, 300],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message || $json.text || $json.body }}",
+              "operation": "contains",
+              "value2": "urgent"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cccc-cccc-cccc-cccc",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.channel || '#alerts' }}",
+        "text": "⚠️ *Urgent Notification*\nFrom: {{ $json.source || $json.from || 'unknown' }}\nMessage: {{ $json.message || $json.text || $json.body }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "slack-cred",
+          "name": "Slack Account"
+        }
+      }
+    },
+    {
+      "id": "dddd-dddd-dddd-dddd",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_USER }}",
+        "toEmail": "={{ $json.email || 'admin@example.com' }}",
+        "subject": "Urgent: {{ $json.source || 'Notification' }}",
+        "text": "Urgent notification received:\n\nFrom: {{ $json.source || $json.from || 'unknown' }}\nMessage: {{ $json.message || $json.text || $json.body }}\n\nTimestamp: {{ $json.timestamp || Date() }}"
+      },
+      "credentials": {
+        "smtp": {
+          "id": "smtp-cred",
+          "name": "SMTP Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter by Keyword",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter by Keyword": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": []
+}
